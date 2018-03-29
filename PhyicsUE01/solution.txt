@@ -1,0 +1,33 @@
+1a) An automobile traveling 95 km/h overtakes a 1.30-km-long train traveling in the same direction on a track parallel to the road.
+    If the train’s speed is 75 km/h, how long does it take the car to pass it, and how far will the car have traveled in this time?
+        1.30km/(95km/h - 75km/h) = 0.065h => 3min 54s
+        95km/h * 0.065h = 6.175km
+
+b)  Opposite Direction?
+        1.10/(95km/h + 75km/h) = 0.00647h => 27.5s
+        95km/h * 0.00647h = 0.6147km => 614.7 m
+
+
+2)  Suppose you adjust your garden hose nozzle for a fast stream of water.
+    You point the nozzle vertically upward at a height of 1.8 m above the ground.
+    When you quickly turn off the nozzle, you hear the water striking the ground next to you for another 2.5 s.
+    What is the water speed as it leaves the nozzle?
+
+    s = v*t + 1/2*a*t^2
+    -1.8m = 2.5s * v + ((-9.81 m/s^2)/2) * 2.5^2
+    v = 11.54 m/s
+
+
+3)  A rescue plane wants to drop supplies to isolated mountain climbers on a rocky ridge 235 m below. 
+    If the plane is traveling horizontally with a speed of 250 km/h (69.4 m/s), 
+    how far in advance of the recipients (horizontal distance) must the goods be dropped
+
+    //no velocity
+    235m = ((-9.81 m/s^2)/2) * t^2
+    t = 6.92s
+
+    //no acceleration
+    s = (69.4 m/s) * 6.92s 
+    s = 480.25m
+
+
