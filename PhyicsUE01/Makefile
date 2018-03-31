@@ -1,8 +1,8 @@
 #LIBS=-lsfml-graphics -lsfml-window -lsfml-system
-SLIBS=-L../../reactphysics3d/lib
+SLIBS=-L../reactphysics3d/lib
 LIBS=-lreactphysics3d
 #isystem suppresses warnings coming from the include dir
-INCLUDE=-isystem ../../reactphysics3d/src
+INCLUDE=-isystem ../reactphysics3d/src
 CXX = clang++
 CXXFLAGS = -c -ggdb -O0 -Wall -Wextra -std=c++11
 LDFLAGS = -ggdb -O0 -std=c++11
