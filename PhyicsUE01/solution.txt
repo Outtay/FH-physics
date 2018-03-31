@@ -4,8 +4,8 @@
         95km/h * 0.065h = 6.175km
 
 b)  Opposite Direction?
-        1.10/(95km/h + 75km/h) = 0.00647h => 27.5s
-        95km/h * 0.00647h = 0.6147km => 614.7 m
+        1.30/(95km/h + 75km/h) = 0.007647h => 27.5s
+        95km/h * 0.007647h = 0.7265km => 726 m
 
 
 2)  Suppose you adjust your garden hose nozzle for a fast stream of water.

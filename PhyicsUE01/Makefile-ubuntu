@@ -1,5 +1,5 @@
 #LIBS=-lsfml-graphics -lsfml-window -lsfml-system
-SLIBS=-L../../reactphysics3d/lib
+SLIBS=-L../../lib
 LIBS=-lreactphysics3d
 #isystem suppresses warnings coming from the include dir
 INCLUDE=-isystem ../../reactphysics3d/src
