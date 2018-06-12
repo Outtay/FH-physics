@@ -111,11 +111,13 @@ int main(){
 
     //add the pendulum
     rp3d::Vector3 positionPend(WINDOW_WIDTH/4, 100.0, 0.0);
-    rp3d::Transform transformPend(positionPend, orientBlock);
+    rp3d::Quaternion orientPend = rp3d::Quaternion::identity();
+    rp3d::Transform transformPend(positionPend, orientPend);
     rp3d::RigidBody* phPendulum;
     phPendulum = world.createRigidBody(transformPend);
 
     phPendulum->enableGravity(true);
+    phPendulum->setInertiaTensorLocal(rp3d::Matrix3x3::identity());
     phBlock->enableGravity(false);
     //95 km/h = 26.3889 m/s
     //block->setLinearVelocity(rp3d::Vector3(26.3889, 0.0, 0.0));
@@ -127,13 +129,27 @@ int main(){
     sfBlock.setPosition(positionBlock.x - BLOCK_WIDTH/2, positionBlock.y - BLOCK_HEIGHT/2);
 
     sf::CircleShape sfPendulum(PEND_RADIUS);
-    sfPendulum.setPosition(positionPend.x - PEND_RADIUS, positionPend.y - PEND_RADIUS);
+    //sfPendulum.setPosition(positionPend.x - PEND_RADIUS, positionPend.y - PEND_RADIUS);
+    sfPendulum.setPosition(positionPend.x, positionPend.y);
+    sfPendulum.setOrigin(PEND_RADIUS, PEND_RADIUS);
 
     sf::CircleShape sfPendFix(FIX_RADIUS);
     rp3d::Vector3 phPendFixPos(WINDOW_WIDTH/2, 50.0, 0.0);
-    sfPendFix.setPosition(phPendFixPos.x - FIX_RADIUS, phPendFixPos.y - FIX_RADIUS);
+    //sfPendFix.setPosition(phPendFixPos.x - FIX_RADIUS, phPendFixPos.y - FIX_RADIUS);
+    sfPendFix.setPosition(phPendFixPos.x, phPendFixPos.y);
+    sfPendFix.setOrigin(FIX_RADIUS, FIX_RADIUS);
     
+    rp3d::RigidBody * phAnchor;
+    rp3d::Transform anchorTransform(phPendFixPos, orientBlock);
+    phAnchor = world.createRigidBody(anchorTransform);
+    phAnchor->setType(rp3d::BodyType::STATIC);
+    rp3d::HingeJointInfo hingeInfo (phAnchor, phPendulum, phPendFixPos, rp3d::Vector3(0,0,1));
+    rp3d::HingeJoint * hingeJoint;
+    hingeJoint = static_cast<rp3d::HingeJoint*>(world.createJoint(hingeInfo));
+    //hingeJoint.enableLimit(true);
+    //hingeJoint.enableMotor(true);
 
+    std::cout << sfPendulum.getOrigin().x << ", " << sfPendulum.getOrigin().y << std::endl;// << ", " << simPendulumPos.z << std::endl;
 
     while (window.isOpen())
     {
@@ -160,9 +176,12 @@ int main(){
 
         sf::Vertex line[] ={
             sf::Vertex(sf::Vector2f(phPendFixPos.x, phPendFixPos.y)),
-            sf::Vertex(sf::Vector2f(simPendulumPos.x + PEND_RADIUS, simPendulumPos.y + PEND_RADIUS))
+            sf::Vertex(sf::Vector2f(simPendulumPos.x, simPendulumPos.y))
         };
 
+
+        std::cout << (phPendFixPos - simPendulumPos).length() << std::endl;
+        
         sfPendulum.setPosition(simPendulumPos.x, simPendulumPos.y);
 
         window.clear();
