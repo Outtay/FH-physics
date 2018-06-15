@@ -1,6 +1,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <cmath>
+#include <algorithm>
 #include <SFML/Graphics.hpp>
 #include "reactphysics3d.h"
 
@@ -83,6 +85,7 @@ void exercise1(){
     }
 
 }
+float Hysteresis(float x, bool rightSide, bool goingRight);
 
 float TIME_STEP = 1.0f/240.0f;
 int WINDOW_WIDTH = 1280;
@@ -92,6 +95,9 @@ float FIX_RADIUS = 30;
 float BLOCK_WIDTH = 200;
 float BLOCK_HEIGHT = 100;
 
+float hysteresisMult = 5.0;
+float magneticStrength = 10;
+
 int main(){
 
 
@@ -99,7 +105,7 @@ int main(){
 
     //initialize simulation
     //Gravity goes in the other direction since I use the coordinate system of SFML
-    rp3d::DynamicsWorld world(rp3d::Vector3 (0.0, +9.81, 0.0));
+    rp3d::DynamicsWorld world(rp3d::Vector3 (0.0, +0.01, 0.0));
     // 0,0 is in the upper left corner
     //add the block
     rp3d::Vector3 positionBlock(WINDOW_WIDTH/2, 600.0, 0.0);
@@ -110,7 +116,7 @@ int main(){
     phBlock = world.createRigidBody(transformBlock);
 
     //add the pendulum
-    rp3d::Vector3 positionPend(WINDOW_WIDTH/4, 100.0, 0.0);
+    rp3d::Vector3 positionPend(WINDOW_WIDTH/4-100, 150.0, 0.0);
     rp3d::Quaternion orientPend = rp3d::Quaternion::identity();
     rp3d::Transform transformPend(positionPend, orientPend);
     rp3d::RigidBody* phPendulum;
@@ -133,23 +139,39 @@ int main(){
     sfPendulum.setPosition(positionPend.x, positionPend.y);
     sfPendulum.setOrigin(PEND_RADIUS, PEND_RADIUS);
 
-    sf::CircleShape sfPendFix(FIX_RADIUS);
-    rp3d::Vector3 phPendFixPos(WINDOW_WIDTH/2, 50.0, 0.0);
+    sf::CircleShape sfAnchor(FIX_RADIUS);
+    rp3d::Vector3 phAnchorPos(WINDOW_WIDTH/2, 50.0, 0.0);
     //sfPendFix.setPosition(phPendFixPos.x - FIX_RADIUS, phPendFixPos.y - FIX_RADIUS);
-    sfPendFix.setPosition(phPendFixPos.x, phPendFixPos.y);
-    sfPendFix.setOrigin(FIX_RADIUS, FIX_RADIUS);
+    sfAnchor.setPosition(phAnchorPos.x, phAnchorPos.y);
+    sfAnchor.setOrigin(FIX_RADIUS, FIX_RADIUS);
     
     rp3d::RigidBody * phAnchor;
-    rp3d::Transform anchorTransform(phPendFixPos, orientBlock);
+    rp3d::Transform anchorTransform(phAnchorPos, orientBlock);
     phAnchor = world.createRigidBody(anchorTransform);
     phAnchor->setType(rp3d::BodyType::STATIC);
-    rp3d::HingeJointInfo hingeInfo (phAnchor, phPendulum, phPendFixPos, rp3d::Vector3(0,0,1));
+    rp3d::HingeJointInfo hingeInfo (phAnchor, phPendulum, phAnchorPos, rp3d::Vector3(0,0,1));
     rp3d::HingeJoint * hingeJoint;
     hingeJoint = static_cast<rp3d::HingeJoint*>(world.createJoint(hingeInfo));
     //hingeJoint.enableLimit(true);
     //hingeJoint.enableMotor(true);
 
     std::cout << sfPendulum.getOrigin().x << ", " << sfPendulum.getOrigin().y << std::endl;// << ", " << simPendulumPos.z << std::endl;
+
+    //initialize the magnetism vector parallel (so with strongest attraction)
+    //The force will be an extra var
+    rp3d::Vector3 magnetismVector = phAnchorPos - positionPend;
+    magnetismVector.normalize();
+    //magnetismVector /= 100;
+    rp3d::Vector3 mostLeftMagnetismVector = phAnchorPos - positionPend;
+    mostLeftMagnetismVector.normalize();
+    rp3d::Vector3 mostRightMagnetismVector (-mostLeftMagnetismVector.x , mostLeftMagnetismVector.y, 0);
+    
+    //use this to determine if the magnet is charging or discharging
+    rp3d::Vector3 rightVector (1,0,0);
+    rp3d::Vector3 lastPosition = positionPend;
+
+    rp3d::Vector3 forceApplyTest(0.5, 2, 0);
+    float forceConstTest = 2.0;
 
     while (window.isOpen())
     {
@@ -160,12 +182,19 @@ int main(){
                         || event.key.code == sf::Keyboard::Q)){
                 window.close();
             }
+            if (event.type == sf::Event::KeyPressed && (event.key.code == sf::Keyboard::Return 
+                        || event.key.code == sf::Keyboard::Space)){
+                
+            }
 
         }
 
 
+        phPendulum->applyTorque(forceApplyTest * forceConstTest);
+
         //-------Simulation--------------
         world.update(TIME_STEP);
+
 
         rp3d::Transform simBlockTransform = phBlock->getTransform();
         rp3d::Vector3 simBlockPos = simBlockTransform.getPosition();
@@ -173,24 +202,65 @@ int main(){
         rp3d::Transform simPendulumTransform = phPendulum->getTransform();
         rp3d::Vector3 simPendulumPos = simPendulumTransform.getPosition();
 
+        bool goingRight = lastPosition.x < simPendulumPos.x;
+        lastPosition = simPendulumPos;
 
-        sf::Vertex line[] ={
-            sf::Vertex(sf::Vector2f(phPendFixPos.x, phPendFixPos.y)),
+        rp3d::Vector3 pendMagnetismDir = (phAnchorPos - simPendulumPos);
+        pendMagnetismDir.normalize();
+        rp3d::Vector3 dirLinePoint = simPendulumPos + pendMagnetismDir * 100;
+        rp3d::Vector3 lowestPendulumPoint = phAnchorPos + rp3d::Vector3(0,1,0) * (phAnchorPos - positionPend).length();
+        float distanceToLow = (simPendulumPos - lowestPendulumPoint).length();
+        float maxDistanceToLow = (positionPend - lowestPendulumPoint).length();
+        //Our function needs parameters in the range of [0,4] so we scale it
+        float transformedDistance = (4-0)*(distanceToLow - 0)/maxDistanceToLow;
+        //if the signbit is set, then the pendulum is on the right side of the center
+        bool rightSide = std::signbit(rightVector.dot(pendMagnetismDir));
+
+        //this makes intuitive sense and it should be approx correct:
+        //use the hysteresis to get a vector that's lagging behind
+        float hystValue = Hysteresis(transformedDistance, rightSide, goingRight);
+        if (!rightSide)
+            magnetismVector = ((1.0f - hystValue) * mostLeftMagnetismVector + hystValue * pendMagnetismDir);
+        else 
+            magnetismVector = ((1.0f - hystValue) * mostRightMagnetismVector + hystValue * pendMagnetismDir);
+
+        rp3d::Vector3 magneticLinePoint = positionBlock + magnetismVector * 100;
+
+        
+
+        sf::Vertex pendString[] ={
+            sf::Vertex(sf::Vector2f(phAnchorPos.x, phAnchorPos.y)),
             sf::Vertex(sf::Vector2f(simPendulumPos.x, simPendulumPos.y))
         };
+        sf::Vertex pendMagnetismDirLine[] = {
+            sf::Vertex(sf::Vector2f (simPendulumPos.x, simPendulumPos.y) ),
+            sf::Vertex(sf::Vector2f (dirLinePoint.x, dirLinePoint.y  ) )
+        };
+        pendMagnetismDirLine[0].color = sf::Color::Red;
+        pendMagnetismDirLine[1].color = sf::Color::Red;
+        sf::Vertex blockMagnetismDirLine[] = {
+            sf::Vertex(sf::Vector2f (positionBlock.x, positionBlock.y) ),
+            sf::Vertex(sf::Vector2f (magneticLinePoint.x, magneticLinePoint.y  ) )
+        };
+        blockMagnetismDirLine[0].color = sf::Color::Red;
+        blockMagnetismDirLine[1].color = sf::Color::Red;
 
-
-        std::cout << (phPendFixPos - simPendulumPos).length() << std::endl;
+        //std::cout << (phPendFixPos - simPendulumPos).length() << std::endl;
+        //std::cout << (simPendulumPos - lowestPendulumPoint).length() << std::endl;
+        //std::cout << rightSide << std::endl;
+        //std::cout << hystValue << std::endl;
         
         sfPendulum.setPosition(simPendulumPos.x, simPendulumPos.y);
 
         window.clear();
         
-        window.draw(line, 2, sf::Lines);
         window.draw(sfBlock);
         window.draw(sfPendulum);
-        window.draw(sfPendFix);
-
+        window.draw(sfAnchor);
+        
+        window.draw(pendString, 2, sf::Lines);
+        window.draw(pendMagnetismDirLine, 2, sf::Lines);
+        window.draw(blockMagnetismDirLine, 2, sf::Lines);
 
         window.display();
 
@@ -201,4 +271,40 @@ int main(){
         
     //std::cout << std::endl <<  "END" << std::endl;
     return 0;
+}
+
+//with this modified sigmoid function, the range of my x-values is [0,4]
+//Assume x is the distance between current and lowestPoint
+float Hysteresis(float x, bool rightSide, bool goingRight){
+    float result;
+    if (rightSide && goingRight){
+        //discharging
+
+        //TODO depending on what x might be I may have to invert it
+        //if x is the distance, this is not the case because then I just need to
+        //decide whether to add or subtract x from the resulting force.
+        //But I probably still have to do something about it.... have to think about it
+        //
+        x = 4 - x;
+        result = 1/(1+std::exp(-3*x + 5));
+    } else if (rightSide && !goingRight) {
+        //Charging
+        //x is the biggest when the pendulum is far away
+        //therefore I need to invert x when charging, which should be obvious when looking
+        //at the beginning of the simulation
+        x = 4 - x;
+        result = 1/(1+std::exp(-3*x + 7));
+    } else if (!rightSide && goingRight){
+        //Charging
+        //std::cout << "test" << std::endl;
+        x = 4 - x;
+        result = 1/(1+std::exp(-3*x + 7)); 
+    } else if (!rightSide && !goingRight){
+        //Discharging
+        //std::cout << "test" << std::endl;
+        x = 4 - x;
+        result = 1/(1+std::exp(-3*x + 5));
+    }
+    return std::max(0.0f, result);
+
 }
