@@ -6,85 +6,6 @@
 #include <SFML/Graphics.hpp>
 #include "reactphysics3d.h"
 
-//car catching up with a train going in the same and then also the opposite direction
-void exercise1(){
-    //Setup
-    rp3d::DynamicsWorld world(rp3d::Vector3 (0.0, -9.81, 0.0));
-
-    const float timeStep = 1.0 / 60.0;
-
-    //add the car
-    rp3d::Vector3 positionCar(0.0, 0.0, 0.0);
-    rp3d::Quaternion orientCar = rp3d::Quaternion::identity();
-    rp3d::Transform transformCar(positionCar, orientCar);
-
-    rp3d::RigidBody* car;
-    car = world.createRigidBody(transformCar);
-
-    //add the train
-    rp3d::Vector3 positionTrain(1300.0, 0.0, 0.0);
-    rp3d::Transform transformTrain(positionTrain, orientCar);
-    rp3d::RigidBody* train;
-    train = world.createRigidBody(transformTrain);
-
-    car->enableGravity(false);
-    train->enableGravity(false);
-    //95 km/h = 26.3889 m/s
-    car->setLinearVelocity(rp3d::Vector3(26.3889, 0.0, 0.0));
-    //75 km/h = 20.8333 m/s
-    train->setLinearVelocity(rp3d::Vector3(20.8333, 0.0, 0.0));
-
-    float timeSpent = 0.0;
-    while (true) {
-
-        world.update(timeStep);
-        timeSpent += timeStep;
-        rp3d::Transform carTransform = car->getTransform();
-        rp3d::Vector3 carPos = carTransform.getPosition();
-
-        rp3d::Transform trainTransform = train->getTransform();
-        rp3d::Vector3 trainPos = trainTransform.getPosition();
-        
-        if (carPos.x >= trainPos.x){
-            std::cout << "Same Direction:" << std::endl;
-            std::cout << "Car Position: " << carPos.x << "m, Train Position: " << trainPos.x << "m | Time: " << timeSpent << std::endl;
-            break;
-        }
-    }
-
-    //second part of the exercise
-    world.destroyRigidBody(car);
-    world.destroyRigidBody(train);
-    car = world.createRigidBody(transformCar);
-    train = world.createRigidBody(transformTrain);
-    
-    //set the velocity of one of them to be negative
-    car->setLinearVelocity(rp3d::Vector3(26.3889, 0.0, 0.0));
-    train->setLinearVelocity(rp3d::Vector3(-20.833, 0.0, 0.0));
-    car->enableGravity(false);
-    train->enableGravity(false);
-
-    timeSpent = 0.0;
-    while (true){
-        world.update(timeStep);
-        timeSpent += timeStep;
-        
-        rp3d::Transform carTransform = car->getTransform();
-        rp3d::Vector3 carPos = carTransform.getPosition();
-
-        rp3d::Transform trainTransform = train->getTransform();
-        rp3d::Vector3 trainPos = trainTransform.getPosition();
-
-        if (carPos.x >= trainPos.x){
-            std::cout << "Opposite Directions:" << std::endl;
-            std::cout << "Car Position: " << carPos.x << "m, Train Position: " << trainPos.x <<  "m | Time: " << timeSpent << std::endl;
-            break;
-        }
-    
-
-    }
-
-}
 float Hysteresis(float x, bool rightSide, bool goingRight);
 
 float TIME_STEP = 1.0f/240.0f;
@@ -105,7 +26,7 @@ int main(){
 
     //initialize simulation
     //Gravity goes in the other direction since I use the coordinate system of SFML
-    rp3d::DynamicsWorld world(rp3d::Vector3 (0.0, +0.01, 0.0));
+    rp3d::DynamicsWorld world(rp3d::Vector3 (0.0, +4.81, 0.0));
     // 0,0 is in the upper left corner
     //add the block
     rp3d::Vector3 positionBlock(WINDOW_WIDTH/2, 600.0, 0.0);
@@ -124,7 +45,8 @@ int main(){
 
     phPendulum->enableGravity(true);
     phPendulum->setInertiaTensorLocal(rp3d::Matrix3x3::identity());
-    phBlock->enableGravity(false);
+    phBlock->enableGravity(true);
+    //phBlock->enableGravity(false);
     //95 km/h = 26.3889 m/s
     //block->setLinearVelocity(rp3d::Vector3(26.3889, 0.0, 0.0));
     //75 km/h = 20.8333 m/s
@@ -149,6 +71,7 @@ int main(){
     rp3d::Transform anchorTransform(phAnchorPos, orientBlock);
     phAnchor = world.createRigidBody(anchorTransform);
     phAnchor->setType(rp3d::BodyType::STATIC);
+
     rp3d::HingeJointInfo hingeInfo (phAnchor, phPendulum, phAnchorPos, rp3d::Vector3(0,0,1));
     rp3d::HingeJoint * hingeJoint;
     hingeJoint = static_cast<rp3d::HingeJoint*>(world.createJoint(hingeInfo));
@@ -170,8 +93,11 @@ int main(){
     rp3d::Vector3 rightVector (1,0,0);
     rp3d::Vector3 lastPosition = positionPend;
 
-    rp3d::Vector3 forceApplyTest(0.5, 2, 0);
-    float forceConstTest = 2.0;
+    rp3d::Vector3 forceApplyTest(-2, 2, 0);
+    rp3d::Vector3 torqueApplyTest(0,0,1);
+    
+    float forceConst = 200.0;
+    float torqueConst = 0.0;
 
     while (window.isOpen())
     {
@@ -190,8 +116,8 @@ int main(){
         }
 
 
-        phPendulum->applyTorque(forceApplyTest * forceConstTest);
-
+        //phPendulum->applyForceToCenterOfMass(forceApplyTest * forceConstTest);
+        
         //-------Simulation--------------
         world.update(TIME_STEP);
 
@@ -219,14 +145,30 @@ int main(){
         //this makes intuitive sense and it should be approx correct:
         //use the hysteresis to get a vector that's lagging behind
         float hystValue = Hysteresis(transformedDistance, rightSide, goingRight);
-        if (!rightSide)
+
+        //simulate a radius by reducing a constant amount 
+        float simulatedRadius = (lowestPendulumPoint - positionBlock).length() - 0.2f;
+        float distToBlockInvSquare = 1/(std::pow((simPendulumPos - positionBlock).length() - simulatedRadius , 2));
+
+        if (!rightSide){
             magnetismVector = ((1.0f - hystValue) * mostLeftMagnetismVector + hystValue * pendMagnetismDir);
-        else 
+            phPendulum->applyTorque(rp3d::Vector3(0,0, hystValue) * torqueConst);
+        }
+        else {
             magnetismVector = ((1.0f - hystValue) * mostRightMagnetismVector + hystValue * pendMagnetismDir);
+            phPendulum->applyTorque(rp3d::Vector3(0,0, hystValue) * -torqueConst);
+        }
+
+        rp3d::Vector3 attractionForce (rp3d::Vector3(magnetismVector.x*10, -magnetismVector.y, 0) * distToBlockInvSquare * forceConst * hystValue);
+        phPendulum->applyForceToCenterOfMass(attractionForce);
+            
+        //std::cout << distToBlockInvSquare << std::endl;
+        std::cout << attractionForce.x << ", " << attractionForce.y << ", " << attractionForce.z << std::endl; 
+        //std::cout << magnetismVector.x << ", " << magnetismVector.y << ", " << magnetismVector.z << std::endl; 
+        //std::cout << hystValue << std::endl;
 
         rp3d::Vector3 magneticLinePoint = positionBlock + magnetismVector * 100;
-
-        
+ 
 
         sf::Vertex pendString[] ={
             sf::Vertex(sf::Vector2f(phAnchorPos.x, phAnchorPos.y)),
@@ -249,6 +191,10 @@ int main(){
         //std::cout << (simPendulumPos - lowestPendulumPoint).length() << std::endl;
         //std::cout << rightSide << std::endl;
         //std::cout << hystValue << std::endl;
+        //rp3d::Vector3 test = phPendulum->getAngularVelocity();
+        rp3d::Vector3 test (rp3d::Vector3(0,0, hystValue) * torqueConst);
+        //std::cout << test.x << ", " << test.y << ", " << test.z << std::endl; 
+
         
         sfPendulum.setPosition(simPendulumPos.x, simPendulumPos.y);
 
