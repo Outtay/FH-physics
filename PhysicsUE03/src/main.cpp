@@ -75,10 +75,6 @@ int main(){
     rp3d::HingeJointInfo hingeInfo (phAnchor, phPendulum, phAnchorPos, rp3d::Vector3(0,0,1));
     rp3d::HingeJoint * hingeJoint;
     hingeJoint = static_cast<rp3d::HingeJoint*>(world.createJoint(hingeInfo));
-    //hingeJoint.enableLimit(true);
-    //hingeJoint.enableMotor(true);
-
-    std::cout << sfPendulum.getOrigin().x << ", " << sfPendulum.getOrigin().y << std::endl;// << ", " << simPendulumPos.z << std::endl;
 
     //initialize the magnetism vector parallel (so with strongest attraction)
     //The force will be an extra var
@@ -97,15 +93,16 @@ int main(){
     rp3d::Vector3 torqueApplyTest(0,0,1);
 
     
-
-    float forceConst = 100.0;
-    float torqueConst = -200.0;
-
+    float forceConst = 0.8;
+    float torqueConst = 5.0;
 
 
     bool goingRight = true;
     int currentHysteresisIndex = 0;
-    float updatedMaxDistance = (positionPend - phAnchorPos).length();
+    
+    rp3d::Vector3 lowestPendulumPoint = phAnchorPos + rp3d::Vector3(0,1,0) * (phAnchorPos - positionPend).length();
+    float maxDistanceToLow = (positionPend - lowestPendulumPoint).length();
+    float updatedMaxDistance = maxDistanceToLow;
 
     while (window.isOpen())
     {
@@ -140,9 +137,8 @@ int main(){
         rp3d::Vector3 pendMagnetismDir = (phAnchorPos - simPendulumPos);
         pendMagnetismDir.normalize();
         rp3d::Vector3 dirLinePoint = simPendulumPos + pendMagnetismDir * 100;
-        rp3d::Vector3 lowestPendulumPoint = phAnchorPos + rp3d::Vector3(0,1,0) * (phAnchorPos - positionPend).length();
         float distanceToLow = (simPendulumPos - lowestPendulumPoint).length();
-        float maxDistanceToLow = (positionPend - lowestPendulumPoint).length();
+        
         //if the signbit is set, then the pendulum is on the right side of the center
         bool rightSide = std::signbit(rightVector.dot(pendMagnetismDir));
         
@@ -184,13 +180,11 @@ int main(){
         }
 
 
-        //Our function needs parameters in the range of [0,4] so we scale it
-        //float transformedDistance = (4-0)*(distanceToLow - 0)/maxDistanceToLow;
         float transformedDistanceLag = transformDistance(distanceToLow, updatedMaxDistance, 0);
         
         //this makes intuitive sense and it should be approx correct:
         //use the hysteresis to get a vector that's lagging behind
-        //float hystValue = Hysteresis(transformedDistance, rightSide, goingRight, currentHysteresisIndex);
+        //float hystValueLag = Hysteresis(transformedDistanceLag, rightSide, goingRight, 0);
         float hystValueLag = Hysteresis(transformedDistanceLag, rightSide, goingRight, 0);
         
         //I also use the hysteresis for the force, for that I use different hysteresis curves based on the last maxDistance
@@ -198,8 +192,10 @@ int main(){
         float hystValueForce = Hysteresis(transformedDistanceForce, rightSide, goingRight, currentHysteresisIndex);
 
         //simulate a radius by reducing a constant amount, this makes sure that we're very close to 0 when at the lowest pendulum point 
-        float simulatedRadius = (lowestPendulumPoint - positionBlock).length() - 0.2f;
-        float distToBlockInvSquare = 1/(std::pow((simPendulumPos - positionBlock).length() - simulatedRadius , 2));
+        //float simulatedRadius = (lowestPendulumPoint - positionBlock).length() - 0.2f;
+        //float distToBlockInvSquare = 1/(std::pow((simPendulumPos - positionBlock).length() - simulatedRadius , 2));
+        float transformedDistanceToLow = transformDistance((simPendulumPos - lowestPendulumPoint).length(), maxDistanceToLow, 5);
+        float distToBlockInvSquare = 1/(std::pow(transformedDistanceToLow + 0.1, 2));
 
         rp3d::Vector3 torqueForce(rp3d::Vector3(0,0, hystValueForce) * torqueConst * distToBlockInvSquare);
         if (!rightSide){
@@ -225,6 +221,7 @@ int main(){
         //std::cout << magnetismVector.x << ", " << magnetismVector.y << ", " << magnetismVector.z << " : magnetism" << std::endl; 
         //std::cout << hystValue << std::endl;
         //std::cout << magnetismVector.length() << std::endl;
+        //std::cout << distanceToLow << std::endl;
 
         rp3d::Vector3 magneticLinePoint = positionBlock + magnetismVector * 100;
  
@@ -308,6 +305,10 @@ float transformDistance(float currentDistance, float maxDistance, int index){
             lower = 0.0;
             upper = 4.0;
             break;
+        case 5:
+            //only used for distance transformation due to square distance magnetic strength decrease
+            lower = 0.0;
+            upper = 2.0;
         default:
             break;
     }
