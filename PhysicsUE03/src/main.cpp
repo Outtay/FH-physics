@@ -51,11 +51,6 @@ int main(){
     phPendulum->enableGravity(true);
     phPendulum->setInertiaTensorLocal(rp3d::Matrix3x3::identity());
     phBlock->enableGravity(true);
-    //phBlock->enableGravity(false);
-    //95 km/h = 26.3889 m/s
-    //block->setLinearVelocity(rp3d::Vector3(26.3889, 0.0, 0.0));
-    //75 km/h = 20.8333 m/s
-    //pendulum->setLinearVelocity(rp3d::Vector3(20.8333, 0.0, 0.0));
     
     //visualization setup 
     sf::RectangleShape sfBlock(sf::Vector2f(BLOCK_WIDTH, BLOCK_HEIGHT));
@@ -104,7 +99,7 @@ int main(){
     
 
     float forceConst = 100.0;
-    float torqueConst = -300.0;
+    float torqueConst = -200.0;
 
 
 
@@ -197,24 +192,27 @@ int main(){
         //use the hysteresis to get a vector that's lagging behind
         //float hystValue = Hysteresis(transformedDistance, rightSide, goingRight, currentHysteresisIndex);
         float hystValueLag = Hysteresis(transformedDistanceLag, rightSide, goingRight, 0);
-
-        //simulate a radius by reducing a constant amount 
-        float simulatedRadius = (lowestPendulumPoint - positionBlock).length() - 0.2f;
-        float distToBlockInvSquare = 1/(std::pow((simPendulumPos - positionBlock).length() - simulatedRadius , 2));
-
-        if (!rightSide){
-            magnetismVector = ((1.0f - hystValueLag) * mostLeftMagnetismVector + hystValueLag * pendMagnetismDir);
-            phPendulum->applyTorque(rp3d::Vector3(0,0, hystValueLag) * torqueConst);
-        }
-        else {
-            magnetismVector = ((1.0f - hystValueLag) * mostRightMagnetismVector + hystValueLag * pendMagnetismDir);
-            phPendulum->applyTorque(rp3d::Vector3(0,0, hystValueLag) * -torqueConst);
-        }
-        magnetismVector.normalize();
-
+        
         //I also use the hysteresis for the force, for that I use different hysteresis curves based on the last maxDistance
         float transformedDistanceForce = transformDistance(distanceToLow, updatedMaxDistance, currentHysteresisIndex);
         float hystValueForce = Hysteresis(transformedDistanceForce, rightSide, goingRight, currentHysteresisIndex);
+
+        //simulate a radius by reducing a constant amount, this makes sure that we're very close to 0 when at the lowest pendulum point 
+        float simulatedRadius = (lowestPendulumPoint - positionBlock).length() - 0.2f;
+        float distToBlockInvSquare = 1/(std::pow((simPendulumPos - positionBlock).length() - simulatedRadius , 2));
+
+        rp3d::Vector3 torqueForce(rp3d::Vector3(0,0, hystValueForce) * torqueConst * distToBlockInvSquare);
+        if (!rightSide){
+            magnetismVector = ((1.0f - hystValueLag) * mostLeftMagnetismVector + hystValueLag * pendMagnetismDir);
+            phPendulum->applyTorque(torqueForce);
+        }
+        else {
+            magnetismVector = ((1.0f - hystValueLag) * mostRightMagnetismVector + hystValueLag * pendMagnetismDir);
+            torqueForce *= -1;
+            phPendulum->applyTorque(torqueForce);
+        }
+        magnetismVector.normalize();
+
 
         rp3d::Vector3 attractionForce (rp3d::Vector3(-magnetismVector.x, -magnetismVector.y, 0) * distToBlockInvSquare * forceConst * hystValueForce);
         phPendulum->applyForceToCenterOfMass(attractionForce);
@@ -223,6 +221,7 @@ int main(){
         //std::cout << distToBlockInvSquare << std::endl;
         //std::cout << "hystValue: " << hystValue << ", " << "DistToBlock: " << distToBlockInvSquare << std::endl;
         //std::cout << attractionForce.x << ", " << attractionForce.y << ", " << attractionForce.z << " : attraction" << std::endl; 
+        //std::cout << torqueForce.x << ", " << torqueForce.y << ", " << torqueForce.z << " : torque" << std::endl; 
         //std::cout << magnetismVector.x << ", " << magnetismVector.y << ", " << magnetismVector.z << " : magnetism" << std::endl; 
         //std::cout << hystValue << std::endl;
         //std::cout << magnetismVector.length() << std::endl;
