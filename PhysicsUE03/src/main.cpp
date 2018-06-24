@@ -7,6 +7,7 @@
 #include "reactphysics3d.h"
 
 float Hysteresis(float x, bool rightSide, bool goingRight, int index);
+float transformDistance(float currentDistance, float maxDistance, int index); 
 
 float TIME_STEP = 1.0f/240.0f;
 int WINDOW_WIDTH = 1280;
@@ -154,11 +155,17 @@ int main(){
         if (newGoingRight != goingRight){ 
             if (rightSide){
                 //mostRightMagnetismVector = 0.5 * (phAnchorPos - positionPend) + 0.5 * (phAnchorPos - simPendulumPos);
+                //mostRightMagnetismVector = 0.5 * mostRightMagnetismVector + 0.5 * (phAnchorPos - simPendulumPos);
+                mostRightMagnetismVector = magnetismVector;
+                //mostRightMagnetismVector = 0.9 * magnetismVector + 0.1 * (phAnchorPos - simPendulumPos);
                 mostRightMagnetismVector.normalize();
                 mostLeftMagnetismVector.x = -mostRightMagnetismVector.x;
                 mostLeftMagnetismVector.y = mostRightMagnetismVector.y;
             } else {
                 //mostLeftMagnetismVector = 0.5 * (phAnchorPos - flippedPosPend) + 0.5 *(phAnchorPos - simPendulumPos);
+                //mostLeftMagnetismVector = 0.5 * mostLeftMagnetismVector + 0.5 *(phAnchorPos - simPendulumPos);
+                //mostLeftMagnetismVector = 0.9 * magnetismVector + 0.1 * (phAnchorPos - simPendulumPos);
+                mostLeftMagnetismVector = magnetismVector;
                 mostLeftMagnetismVector.normalize();
                 mostRightMagnetismVector.x = -mostLeftMagnetismVector.x;
                 mostRightMagnetismVector.y = mostLeftMagnetismVector.y;
@@ -169,41 +176,50 @@ int main(){
         //std::cout << goingRight << std::endl;
         lastPosition = simPendulumPos;
 
-        if(maxDistanceToLow * 0.8 > distanceToLow){
+        if(maxDistanceToLow * 0.8 < updatedMaxDistance){
             currentHysteresisIndex = 0;
-        } else if (maxDistanceToLow * 0.6 > distanceToLow){
+        } else if (maxDistanceToLow * 0.6 < updatedMaxDistance){
             currentHysteresisIndex = 1;
-        } else if (maxDistanceToLow  * 0.4 > distanceToLow){
+        } else if (maxDistanceToLow  * 0.4 < updatedMaxDistance){
             currentHysteresisIndex = 2;
-        } else {
+        } else if (maxDistanceToLow  * 0.2 < updatedMaxDistance){
             currentHysteresisIndex = 3;
+        } else {
+            currentHysteresisIndex = 4;
         }
+
 
         //Our function needs parameters in the range of [0,4] so we scale it
         //float transformedDistance = (4-0)*(distanceToLow - 0)/maxDistanceToLow;
-        float transformedDistance = (4-0)*(distanceToLow - 0)/updatedMaxDistance;
+        float transformedDistanceLag = transformDistance(distanceToLow, updatedMaxDistance, 0);
         
         //this makes intuitive sense and it should be approx correct:
         //use the hysteresis to get a vector that's lagging behind
         //float hystValue = Hysteresis(transformedDistance, rightSide, goingRight, currentHysteresisIndex);
-        float hystValue = Hysteresis(transformedDistance, rightSide, goingRight, 0);
+        float hystValueLag = Hysteresis(transformedDistanceLag, rightSide, goingRight, 0);
 
         //simulate a radius by reducing a constant amount 
         float simulatedRadius = (lowestPendulumPoint - positionBlock).length() - 0.2f;
         float distToBlockInvSquare = 1/(std::pow((simPendulumPos - positionBlock).length() - simulatedRadius , 2));
 
         if (!rightSide){
-            magnetismVector = ((1.0f - hystValue) * mostLeftMagnetismVector + hystValue * pendMagnetismDir);
-            phPendulum->applyTorque(rp3d::Vector3(0,0, hystValue) * torqueConst);
+            magnetismVector = ((1.0f - hystValueLag) * mostLeftMagnetismVector + hystValueLag * pendMagnetismDir);
+            phPendulum->applyTorque(rp3d::Vector3(0,0, hystValueLag) * torqueConst);
         }
         else {
-            magnetismVector = ((1.0f - hystValue) * mostRightMagnetismVector + hystValue * pendMagnetismDir);
-            phPendulum->applyTorque(rp3d::Vector3(0,0, hystValue) * -torqueConst);
+            magnetismVector = ((1.0f - hystValueLag) * mostRightMagnetismVector + hystValueLag * pendMagnetismDir);
+            phPendulum->applyTorque(rp3d::Vector3(0,0, hystValueLag) * -torqueConst);
         }
         magnetismVector.normalize();
-        rp3d::Vector3 attractionForce (rp3d::Vector3(-magnetismVector.x, -magnetismVector.y, 0) * distToBlockInvSquare * forceConst * hystValue);
+
+        //I also use the hysteresis for the force, for that I use different hysteresis curves based on the last maxDistance
+        float transformedDistanceForce = transformDistance(distanceToLow, updatedMaxDistance, currentHysteresisIndex);
+        float hystValueForce = Hysteresis(transformedDistanceForce, rightSide, goingRight, currentHysteresisIndex);
+
+        rp3d::Vector3 attractionForce (rp3d::Vector3(-magnetismVector.x, -magnetismVector.y, 0) * distToBlockInvSquare * forceConst * hystValueForce);
         phPendulum->applyForceToCenterOfMass(attractionForce);
             
+        //std::cout << hystValueForce << std::endl;
         //std::cout << distToBlockInvSquare << std::endl;
         //std::cout << "hystValue: " << hystValue << ", " << "DistToBlock: " << distToBlockInvSquare << std::endl;
         //std::cout << attractionForce.x << ", " << attractionForce.y << ", " << attractionForce.z << " : attraction" << std::endl; 
@@ -236,7 +252,7 @@ int main(){
         //std::cout << rightSide << std::endl;
         //std::cout << hystValue << std::endl;
         //rp3d::Vector3 test = phPendulum->getAngularVelocity();
-        rp3d::Vector3 test (rp3d::Vector3(0,0, hystValue) * torqueConst);
+        //rp3d::Vector3 test (rp3d::Vector3(0,0, hystValueLag) * torqueConst);
         //std::cout << test.x << ", " << test.y << ", " << test.z << std::endl; 
 
         
@@ -269,34 +285,112 @@ int main(){
 //0.4 - 3.6
 //0.9 - 3.1
 //1.6 - 2.3
+float transformDistance(float currentDistance, float maxDistance, int index){
+    
+    float upper = 0.0;
+    float lower = 0.0;
+    switch(index){
+        case 1:
+            lower = 0.4;
+            upper = 3.6;
+            break;
+        case 2:
+            lower = 0.9;
+            upper = 3.1;
+            break;
+        case 3:
+            lower = 1.6;
+            upper = 2.3;
+            break;
+        case 4:
+            return 0.0;
+            break;
+        case 0:
+            lower = 0.0;
+            upper = 4.0;
+            break;
+        default:
+            break;
+    }
+    float result = (upper-lower)*(currentDistance - lower)/maxDistance;
+
+    return result;
+
+}
 //how do you implement that there's a new 0? With linear interpolation you would still never really 
 //lag behind later as even 0.1 would get you somewhere around 0.5 which isn't really that great.
 
 //with this modified sigmoid function, the range of my x-values is [0,4]
 //Assume x is the distance between current and lowestPoint
 float Hysteresis(float x, bool rightSide, bool goingRight, int index){
+
+
+    //http://fooplot.com/#W3sidHlwZSI6MCwiZXEiOiIoMS8oMStlXigtMyp4KzUpKSkiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiKDEvKDErZV4oLTMqeCs3KSkpIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6IigxLygxK2VeKC0zKih4LzAuOC0wLjU1KSs1KSkpKjAuOCswLjEiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiKDEvKDErZV4oLTMqKHgvMC44LTAuNDUpKzcpKSkqMC44KzAuMSIsImNvbG9yIjoiIzAwMDAwMCJ9LHsidHlwZSI6MCwiZXEiOiIoMS8oMStlXigtMyooeC8wLjYtMS41KSs1KSkpKjAuNiswLjIiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiKDEvKDErZV4oLTMqKHgvMC42LTEuMSkrNykpKSowLjYrMC4yIiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjowLCJlcSI6IigxLygxK2VeKC0zKih4LzAuMi04KSs1KSkpKjAuMiswLjQiLCJjb2xvciI6IiMwMDAwMDAifSx7InR5cGUiOjAsImVxIjoiKDEvKDErZV4oLTMqKHgvMC4yLTcuNykrNykpKSowLjIrMC40IiwiY29sb3IiOiIjMDAwMDAwIn0seyJ0eXBlIjoxMDAwLCJ3aW5kb3ciOlsiMC40NTE5OTIzODE3MzQ5MTYxIiwiMy44NTk4NjQzODE3MzQ5MDc2IiwiLTAuNTgxOTIyNzg3MDMzMDg1NCIsIjEuNTE1MjI5MjEyOTY2OTExNCJdLCJncmlkIjpbIiIsIjAuMSJdfV0-
+    
+    float x_modifierDiv = 1.0;
+    float afterFunctionModifierFactor = 1.0;
+    float x_modifierSumCharge = 0.0;
+    float x_modifierSumDischarge = 0.0;
+    float afterFunctionModifierSum = 0.0;
+    switch(index){
+        case 1:
+            x_modifierDiv = 0.8;
+            x_modifierSumDischarge = -0.55;
+            x_modifierSumCharge = -0.45;
+            afterFunctionModifierFactor = 0.8;
+            afterFunctionModifierSum = 0.1;
+            break;
+        case 2:
+            x_modifierDiv = 0.6;
+            x_modifierSumDischarge = -1.5;
+            x_modifierSumCharge = -1.1;
+            afterFunctionModifierFactor = 0.6;
+            afterFunctionModifierSum = 0.2;
+            break;
+        case 3:
+            x_modifierDiv = 0.2;
+            x_modifierSumDischarge = -8.0;
+            x_modifierSumCharge = -7.7;
+            afterFunctionModifierFactor = 0.2;
+            afterFunctionModifierSum = 0.4;
+            break;
+        case 4: 
+            return 0.5;
+        case 0:
+            break;
+        default:
+            break;
+    }
+
+
     float result;
+
+    //original form of the functions:
+    //1/(1+std::exp(-3*x + 5))
+    //1/(1+std::exp(-3*x + 7))
+
     if (rightSide && goingRight){
         //discharging
         x = 4 - x;
-        result = 1/(1+std::exp(-3*x + 5));
+        
+        result = (1/(1+std::exp(-3*(x / x_modifierDiv - x_modifierSumDischarge) + 5))) * afterFunctionModifierFactor + afterFunctionModifierSum;
     } else if (rightSide && !goingRight) {
         //Charging
         //x is the biggest when the pendulum is far away
         //therefore I need to invert x when charging, which should be obvious when looking
         //at the beginning of the simulation
         x = 4 - x;
-        result = 1/(1+std::exp(-3*x + 7));
+        result = (1/(1+std::exp(-3*(x / x_modifierDiv - x_modifierSumDischarge) + 7))) * afterFunctionModifierFactor + afterFunctionModifierSum;
     } else if (!rightSide && goingRight){
         //Charging
         //std::cout << "test" << std::endl;
         x = 4 - x;
-        result = 1/(1+std::exp(-3*x + 7)); 
+        result = (1/(1+std::exp(-3*(x / x_modifierDiv - x_modifierSumDischarge) + 7))) * afterFunctionModifierFactor + afterFunctionModifierSum;
     } else if (!rightSide && !goingRight){
         //Discharging
         //std::cout << "test" << std::endl;
         x = 4 - x;
-        result = 1/(1+std::exp(-3*x + 5));
+        result = (1/(1+std::exp(-3*(x / x_modifierDiv - x_modifierSumDischarge) + 5))) * afterFunctionModifierFactor + afterFunctionModifierSum;
     }
     return std::max(0.0f, result);
 
