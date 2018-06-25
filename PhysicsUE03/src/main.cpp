@@ -9,7 +9,7 @@
 float Hysteresis(float x, bool rightSide, bool goingRight, int index);
 float transformDistance(float currentDistance, float maxDistance, int index); 
 
-float TIME_STEP = 1.0f/240.0f;
+float TIME_STEP = 1.0f/300.0f;
 int WINDOW_WIDTH = 1280;
 int WINDOW_HEIGHT = 720;
 float PEND_RADIUS = 50;
@@ -17,12 +17,11 @@ float FIX_RADIUS = 30;
 float BLOCK_WIDTH = 200;
 float BLOCK_HEIGHT = 100;
 
-float hysteresisMult = 5.0;
-//I'm having the problem, that when the attraction force increases the speed towards the middle,
-//due to the higher speed, there is less of a decrease in speed (which makes the pendulum go faster)
-//This might be the correct physical behaviour, which is why I need to lessen the strength, for it to not go overboard
-//For having an interesting almost more intuitively looking pendulum, the strength should be negative.
-float magneticStrength = 1.0;
+
+//Those two variables control force and torque constants
+//They are the key for the simulation to look a certain way
+float forceConst = 0.6;
+float torqueConst = 150.0;
 
 int main(){
 
@@ -42,7 +41,7 @@ int main(){
     phBlock = world.createRigidBody(transformBlock);
 
     //add the pendulum
-    rp3d::Vector3 positionPend(WINDOW_WIDTH/4-100, 150.0, 0.0);
+    rp3d::Vector3 positionPend(WINDOW_WIDTH/4 - 100, 150.0, 0.0);
     rp3d::Quaternion orientPend = rp3d::Quaternion::identity();
     rp3d::Transform transformPend(positionPend, orientPend);
     rp3d::RigidBody* phPendulum;
@@ -57,13 +56,11 @@ int main(){
     sfBlock.setPosition(positionBlock.x - BLOCK_WIDTH/2, positionBlock.y - BLOCK_HEIGHT/2);
 
     sf::CircleShape sfPendulum(PEND_RADIUS);
-    //sfPendulum.setPosition(positionPend.x - PEND_RADIUS, positionPend.y - PEND_RADIUS);
     sfPendulum.setPosition(positionPend.x, positionPend.y);
     sfPendulum.setOrigin(PEND_RADIUS, PEND_RADIUS);
 
     sf::CircleShape sfAnchor(FIX_RADIUS);
     rp3d::Vector3 phAnchorPos(WINDOW_WIDTH/2, 50.0, 0.0);
-    //sfPendFix.setPosition(phPendFixPos.x - FIX_RADIUS, phPendFixPos.y - FIX_RADIUS);
     sfAnchor.setPosition(phAnchorPos.x, phAnchorPos.y);
     sfAnchor.setOrigin(FIX_RADIUS, FIX_RADIUS);
     
@@ -92,10 +89,6 @@ int main(){
     rp3d::Vector3 forceApplyTest(-2, 2, 0);
     rp3d::Vector3 torqueApplyTest(0,0,1);
 
-    
-    float forceConst = 0.8;
-    float torqueConst = 5.0;
-
 
     bool goingRight = true;
     int currentHysteresisIndex = 0;
@@ -103,6 +96,8 @@ int main(){
     rp3d::Vector3 lowestPendulumPoint = phAnchorPos + rp3d::Vector3(0,1,0) * (phAnchorPos - positionPend).length();
     float maxDistanceToLow = (positionPend - lowestPendulumPoint).length();
     float updatedMaxDistance = maxDistanceToLow;
+
+    bool isPaused = false;
 
     while (window.isOpen())
     {
@@ -115,14 +110,14 @@ int main(){
             }
             if (event.type == sf::Event::KeyPressed && (event.key.code == sf::Keyboard::Return 
                         || event.key.code == sf::Keyboard::Space)){
-                
+                isPaused = !isPaused; 
             }
 
         }
 
+        if(isPaused)
+            continue;
 
-        //phPendulum->applyForceToCenterOfMass(forceApplyTest * forceConstTest);
-        
         //-------Simulation--------------
         world.update(TIME_STEP);
 
@@ -146,16 +141,17 @@ int main(){
         if (newGoingRight != goingRight){ 
             if (rightSide){
                 //mostRightMagnetismVector = 0.5 * (phAnchorPos - positionPend) + 0.5 * (phAnchorPos - simPendulumPos);
-                //mostRightMagnetismVector = 0.5 * mostRightMagnetismVector + 0.5 * (phAnchorPos - simPendulumPos);
-                mostRightMagnetismVector = magnetismVector;
                 //mostRightMagnetismVector = 0.9 * magnetismVector + 0.1 * (phAnchorPos - simPendulumPos);
+                //This looks much better than the alternatives
+                mostRightMagnetismVector = magnetismVector;
                 mostRightMagnetismVector.normalize();
                 mostLeftMagnetismVector.x = -mostRightMagnetismVector.x;
                 mostLeftMagnetismVector.y = mostRightMagnetismVector.y;
             } else {
+                
                 //mostLeftMagnetismVector = 0.5 * (phAnchorPos - flippedPosPend) + 0.5 *(phAnchorPos - simPendulumPos);
-                //mostLeftMagnetismVector = 0.5 * mostLeftMagnetismVector + 0.5 *(phAnchorPos - simPendulumPos);
                 //mostLeftMagnetismVector = 0.9 * magnetismVector + 0.1 * (phAnchorPos - simPendulumPos);
+                //This looks much better than the alternatives
                 mostLeftMagnetismVector = magnetismVector;
                 mostLeftMagnetismVector.normalize();
                 mostRightMagnetismVector.x = -mostLeftMagnetismVector.x;
@@ -164,9 +160,10 @@ int main(){
             updatedMaxDistance = (simPendulumPos - lowestPendulumPoint).length();
         }
         goingRight = newGoingRight;
-        //std::cout << goingRight << std::endl;
         lastPosition = simPendulumPos;
 
+        //The smaller the distance the pendulum can have to the middle
+        //the more magnetic residue is still left inside the ferro magnet
         if(maxDistanceToLow * 0.8 < updatedMaxDistance){
             currentHysteresisIndex = 0;
         } else if (maxDistanceToLow * 0.6 < updatedMaxDistance){
@@ -184,20 +181,19 @@ int main(){
         
         //this makes intuitive sense and it should be approx correct:
         //use the hysteresis to get a vector that's lagging behind
-        //float hystValueLag = Hysteresis(transformedDistanceLag, rightSide, goingRight, 0);
         float hystValueLag = Hysteresis(transformedDistanceLag, rightSide, goingRight, 0);
         
         //I also use the hysteresis for the force, for that I use different hysteresis curves based on the last maxDistance
         float transformedDistanceForce = transformDistance(distanceToLow, updatedMaxDistance, currentHysteresisIndex);
         float hystValueForce = Hysteresis(transformedDistanceForce, rightSide, goingRight, currentHysteresisIndex);
 
-        //simulate a radius by reducing a constant amount, this makes sure that we're very close to 0 when at the lowest pendulum point 
-        //float simulatedRadius = (lowestPendulumPoint - positionBlock).length() - 0.2f;
-        //float distToBlockInvSquare = 1/(std::pow((simPendulumPos - positionBlock).length() - simulatedRadius , 2));
+        //simulate a radius by reducing a constant amount, this makes sure that we're very close to 0 when at the lowest pendulum point
+        //This is the reason for the added constant term for distToBlockInvSquare
         float transformedDistanceToLow = transformDistance((simPendulumPos - lowestPendulumPoint).length(), maxDistanceToLow, 5);
         float distToBlockInvSquare = 1/(std::pow(transformedDistanceToLow + 0.1, 2));
-
-        rp3d::Vector3 torqueForce(rp3d::Vector3(0,0, hystValueForce) * torqueConst * distToBlockInvSquare);
+        
+        //rp3d::Vector3 torqueForce(rp3d::Vector3(0,0, hystValueForce) * torqueConst * distToBlockInvSquare * test2);
+        rp3d::Vector3 torqueForce(rp3d::Vector3(0,0, hystValueForce) * torqueConst * pendMagnetismDir.cross(magnetismVector));
         if (!rightSide){
             magnetismVector = ((1.0f - hystValueLag) * mostLeftMagnetismVector + hystValueLag * pendMagnetismDir);
             phPendulum->applyTorque(torqueForce);
@@ -213,18 +209,16 @@ int main(){
         rp3d::Vector3 attractionForce (rp3d::Vector3(-magnetismVector.x, -magnetismVector.y, 0) * distToBlockInvSquare * forceConst * hystValueForce);
         phPendulum->applyForceToCenterOfMass(attractionForce);
             
-        //std::cout << hystValueForce << std::endl;
         //std::cout << distToBlockInvSquare << std::endl;
         //std::cout << "hystValue: " << hystValue << ", " << "DistToBlock: " << distToBlockInvSquare << std::endl;
         //std::cout << attractionForce.x << ", " << attractionForce.y << ", " << attractionForce.z << " : attraction" << std::endl; 
         //std::cout << torqueForce.x << ", " << torqueForce.y << ", " << torqueForce.z << " : torque" << std::endl; 
         //std::cout << magnetismVector.x << ", " << magnetismVector.y << ", " << magnetismVector.z << " : magnetism" << std::endl; 
-        //std::cout << hystValue << std::endl;
         //std::cout << magnetismVector.length() << std::endl;
-        //std::cout << distanceToLow << std::endl;
 
+
+        //Visualization steps
         rp3d::Vector3 magneticLinePoint = positionBlock + magnetismVector * 100;
- 
 
         sf::Vertex pendString[] ={
             sf::Vertex(sf::Vector2f(phAnchorPos.x, phAnchorPos.y)),
@@ -242,19 +236,31 @@ int main(){
         };
         blockMagnetismDirLine[0].color = sf::Color::Red;
         blockMagnetismDirLine[1].color = sf::Color::Red;
+       
+        rp3d::Vector3 gravityLinePoint = simPendulumPos + rp3d::Vector3(0,1,0) * 60;
+        sf::Vertex gravityDirLine[] = {
+            sf::Vertex(sf::Vector2f (simPendulumPos.x, simPendulumPos.y) ),
+            sf::Vertex(sf::Vector2f (gravityLinePoint.x, gravityLinePoint.y  ) )
+        };
+        gravityDirLine[0].color = sf::Color::Green;
+        gravityDirLine[1].color = sf::Color::Green;
 
-        //std::cout << (phPendFixPos - simPendulumPos).length() << std::endl;
-        //std::cout << (simPendulumPos - lowestPendulumPoint).length() << std::endl;
-        //std::cout << rightSide << std::endl;
-        //std::cout << hystValue << std::endl;
-        //rp3d::Vector3 test = phPendulum->getAngularVelocity();
+        rp3d::Vector3 attractionForceNorm = attractionForce;
+        attractionForceNorm.normalize();
+        rp3d::Vector3 magneticForceLinePoint = simPendulumPos + attractionForceNorm * 60 ;
+        sf::Vertex magneticForceDirLine[] = {
+            sf::Vertex(sf::Vector2f (simPendulumPos.x, simPendulumPos.y) ),
+            sf::Vertex(sf::Vector2f (magneticForceLinePoint.x, magneticForceLinePoint.y  ) )
+        };
+        magneticForceDirLine[0].color = sf::Color::Blue;
+        magneticForceDirLine[1].color = sf::Color::Blue;
+        //std::cout << attractionForceNorm.x << ", " << attractionForceNorm.y << ", " << attractionForceNorm.z << " : attraction" << std::endl; 
         //rp3d::Vector3 test (rp3d::Vector3(0,0, hystValueLag) * torqueConst);
         //std::cout << test.x << ", " << test.y << ", " << test.z << std::endl; 
-
         
         sfPendulum.setPosition(simPendulumPos.x, simPendulumPos.y);
 
-        window.clear();
+        window.clear(sf::Color(50,50,50));
         
         window.draw(sfBlock);
         window.draw(sfPendulum);
@@ -263,20 +269,19 @@ int main(){
         window.draw(pendString, 2, sf::Lines);
         window.draw(pendMagnetismDirLine, 2, sf::Lines);
         window.draw(blockMagnetismDirLine, 2, sf::Lines);
+        window.draw(gravityDirLine, 2, sf::Lines);
+        window.draw(magneticForceDirLine, 2, sf::Lines);
 
         window.display();
 
     }
 
-    //std::cout << "First Exercise: Car vs. Train, The Reckoning" << std::endl;
-    //exercise1();       
-        
-    //std::cout << std::endl <<  "END" << std::endl;
+
     return 0;
 }
 
-//TODO change the range to be variable based on the last max distance... probably do this in the function as 
-//it depends on the function that is used.
+//change the range to be variable based on the last max distance... 
+//Those are just from looking at the curves when plotted 
 //0 to 4
 //0.4 - 3.6
 //0.9 - 3.1
@@ -317,8 +322,6 @@ float transformDistance(float currentDistance, float maxDistance, int index){
     return result;
 
 }
-//how do you implement that there's a new 0? With linear interpolation you would still never really 
-//lag behind later as even 0.1 would get you somewhere around 0.5 which isn't really that great.
 
 //with this modified sigmoid function, the range of my x-values is [0,4]
 //Assume x is the distance between current and lowestPoint
